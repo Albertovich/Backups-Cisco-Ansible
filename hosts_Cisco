@@ -1,0 +1,13 @@
+[all:vars] 
+ansible_connection=local 
+
+[IOS_1:vars] 
+username=alberto 
+password=cisco 
+backup_folder=/etc/ansible/backup-cisco-catalyst/ 
+cisco_os=ios 
+
+[IOS_1] 
+S1 host=192.168.162.3 
+S2 host=192.168.162.4 
+S3 host=192.168.162.5

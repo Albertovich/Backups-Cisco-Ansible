@@ -1,0 +1,80 @@
+---
+
+- hosts: "{{ sw }}"
+  gather_facts: no
+  ignore_errors: yes
+  serial: 1
+  vars:
+    creds:
+      host: "{{ host }}"
+      username: "{{ username }}"
+      password: "{{ password }}"
+  tasks:
+    - name: Crear un directorio de base si no existe
+      file:
+        path: "{{ backup_folder }}"
+        state: directory
+        mode: 0755
+    
+    - name: Crear un directorio por cada dispositivo si no existe
+      file:
+        path: "{{ backup_folder }}{{ inventory_hostname }}"
+        state: directory
+        mode: 0755
+
+    - name: Registra la variable de tiempo para incorporar más tarde
+      local_action: command date +%Y%m%d-%H:%M
+      register: timestamp
+
+    - name: Execute IOS commands
+      ios_command:
+        provider: "{{ creds }}"
+        commands: "{{ item  }}"
+      register: commands_output
+      with_items:
+        - show run
+        - write
+        - show vlan
+        - show interfaces status
+        - show etherchannel summary
+        - show logging
+        - show version
+        - show spanning-tree
+        - show spanning-tree blockedports
+      when: 
+        - cisco_os == 'ios'
+    
+    - name: Crear un directorio por comando IOS si no existe
+      file:
+        path: "{{ backup_folder }}{{ inventory_hostname }}/{{ commands_output.results[item].item }}"
+        state: directory
+        mode: 0755
+      with_items:
+        - 0
+        - 1
+        - 2 
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+      when:
+        - cisco_os == 'ios'
+    
+    - name: Guardar la salida de los comandos IOS en un archivo destino
+      copy:
+        content: "{{ commands_output.results[item].stdout[0] }}"
+        dest:  "{{ backup_folder }}{{ inventory_hostname }}/{{ commands_output.results[item].item }}/{{ inventory_hostname }}_{{ commands_output.results[item].item }}_{{ timestamp.stdout }}.txt"
+      with_items:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8 
+      when:
+        - cisco_os == 'ios'   
