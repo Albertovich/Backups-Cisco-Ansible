@@ -9,16 +9,27 @@
       host: "{{ host }}"
       username: "{{ username }}"
       password: "{{ password }}"
+    ios_backup_commands:
+      - show run
+      - write
+      - show vlan
+      - show interfaces status
+      - show etherchannel summary
+      - show logging
+      - show version
+      - show spanning-tree
+      - show spanning-tree blockedports
+    sanitized_backup_folder: "{{ backup_folder | regex_replace('\\/$', '') }}"
   tasks:
     - name: Crear un directorio de base si no existe
       file:
-        path: "{{ backup_folder }}"
+        path: "{{ sanitized_backup_folder }}"
         state: directory
         mode: 0755
-    
+
     - name: Crear un directorio por cada dispositivo si no existe
       file:
-        path: "{{ backup_folder }}{{ inventory_hostname }}"
+        path: "{{ sanitized_backup_folder }}/{{ inventory_hostname }}"
         state: directory
         mode: 0755
 
@@ -29,52 +40,44 @@
     - name: Execute IOS commands
       ios_command:
         provider: "{{ creds }}"
-        commands: "{{ item  }}"
+        commands: "{{ ios_backup_commands }}"
       register: commands_output
-      with_items:
-        - show run
-        - write
-        - show vlan
-        - show interfaces status
-        - show etherchannel summary
-        - show logging
-        - show version
-        - show spanning-tree
-        - show spanning-tree blockedports
-      when: 
+      when:
         - cisco_os == 'ios'
-    
+
+    - name: Preparar comandos y salidas para el backup
+      set_fact:
+        ios_command_backups: "{{ ios_command_backups | default([]) + [
+          {
+            'command': item.0,
+            'output': item.1,
+            'sanitized_command': (
+              item.0
+              | regex_replace('[^A-Za-z0-9]+', '_')
+              | regex_replace('^_+|_+$', '')
+              | lower
+              | default('command', true)
+            )
+          }
+        ] }}"
+      loop: "{{ ios_backup_commands | zip(commands_output.stdout) | list }}"
+      when:
+        - cisco_os == 'ios'
+
     - name: Crear un directorio por comando IOS si no existe
       file:
-        path: "{{ backup_folder }}{{ inventory_hostname }}/{{ commands_output.results[item].item }}"
+        path: "{{ sanitized_backup_folder }}/{{ inventory_hostname }}/{{ item.sanitized_command }}"
         state: directory
         mode: 0755
-      with_items:
-        - 0
-        - 1
-        - 2 
-        - 3
-        - 4
-        - 5
-        - 6
-        - 7
-        - 8
+      loop: "{{ ios_command_backups | default([]) }}"
       when:
         - cisco_os == 'ios'
-    
+
     - name: Guardar la salida de los comandos IOS en un archivo destino
       copy:
-        content: "{{ commands_output.results[item].stdout[0] }}"
-        dest:  "{{ backup_folder }}{{ inventory_hostname }}/{{ commands_output.results[item].item }}/{{ inventory_hostname }}_{{ commands_output.results[item].item }}_{{ timestamp.stdout }}.txt"
-      with_items:
-        - 0
-        - 1
-        - 2
-        - 3
-        - 4
-        - 5
-        - 6
-        - 7
-        - 8 
+        content: "{{ item.output }}"
+        dest: "{{ sanitized_backup_folder }}/{{ inventory_hostname }}/{{ item.sanitized_command }}/{{ inventory_hostname }}_{{ item.sanitized_command }}_{{ timestamp.stdout }}.txt"
+      loop: "{{ ios_command_backups | default([]) }}"
       when:
-        - cisco_os == 'ios'   
+        - cisco_os == 'ios'
+
